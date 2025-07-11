@@ -1,3 +1,5 @@
 python-telegram-bot==20.0 
 python-dotenv
 openai
+gspread
+oauth2client
