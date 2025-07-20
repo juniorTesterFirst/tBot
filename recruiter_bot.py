@@ -147,28 +147,28 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+    # --- Conversation handler ---
     conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("start", start)],
-    states={
-        POSITION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_position)],
-        INTERVIEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, interview)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel)]
+        entry_points=[CommandHandler("start", start)],
+        states={
+            POSITION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_position)],
+            INTERVIEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, interview)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
     )
 
     app.add_handler(conv_handler)
-    print("Bot webhook orqali ishga tushdi...")
+    print("✅ Bot webhook orqali ishga tushdi...")
 
-    # --- TO‘G‘RILANGAN QISM ---
+    # --- Webhook uchun sozlamalar ---
     PORT = int(os.environ.get("PORT", 8443))
-    WEBHOOK_PATH = "/webhook"  # oddiy path nomi
+    WEBHOOK_PATH = "/webhook"
     WEBHOOK_URL = f"https://eloquent-warmth.up.railway.app{WEBHOOK_PATH}"
 
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
-        webhook_url=WEBHOOK_URL,
-        
+        webhook_url=WEBHOOK_URL
 )
 
 
