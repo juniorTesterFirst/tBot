@@ -168,7 +168,7 @@ def main():
         listen="0.0.0.0",
         port=PORT,
         webhook_url=WEBHOOK_URL,
-        path=WEBHOOK_PATH  # bu juda muhim!
+        
 )
 
 
