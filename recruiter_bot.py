@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import (
-ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters,
-ConversationHandler
+    ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters,
+    ConversationHandler
 )
 from dotenv import load_dotenv
 import os
@@ -9,16 +9,18 @@ import openai
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# .env fayldan o‘zgaruvchilarni yuklaymiz
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "AI Recruiter Admin")
 
+# --- Majburiy tokenlar borligini tekshirish ---
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise ValueError("⚠️ Iltimos, `.env` faylda TELEGRAM_TOKEN va OPENAI_API_KEY to‘g‘ri yozilganiga ishonch hosil qiling.")
+    raise ValueError("⚠️ Iltimos, .env faylda TELEGRAM_TOKEN va OPENAI_API_KEY to‘g‘ri ko‘rsatilganiga ishonch hosil qiling.")
 
-# --- GOOGLE SHEETGA ULANISH ---
+# --- Google Sheets funksiyasi ---
 def get_sheet(sheet_name="AI Recruiter Admin", worksheet_name="Kandidat javoblari"):
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -36,15 +38,15 @@ def write_to_sheet(data):
         sheet = get_sheet()
         sheet.append_row(data)
     except Exception as e:
-        print(f"Google Sheetga yozishda xatolik: {e}")
+        print(f"❌ Google Sheetga yozishda xatolik: {e}")
 
-# --- AI yordamida savollar generatsiyasi (O‘zbekcha) ---
+# --- AI yordamida savollar yaratish ---
 def generate_questions(position):
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
     prompt = (
         f"Siz tajribali HR mutaxassissiz. "
         f'"{position}" lavozimi uchun nomzoddan intervyu jarayonida so‘ralsa foydali bo‘ladigan 5 ta qisqa, adabiy o‘zbek tilida, imloviy va grammatik xatolarsiz savol tuzing. '
-        "Javobingizda faqat savollar ro‘yxatini yozing, boshqa izoh yoki gaplar kerak emas."
+        "Faqat savollar ro‘yxatini yozing, boshqa izoh kerak emas."
     )
 
     response = client.chat.completions.create(
@@ -54,16 +56,14 @@ def generate_questions(position):
             {"role": "user", "content": prompt}
         ]
     )
-    # Tozalash (AI ba'zida 1., 2., yoki '-' bilan yozishi mumkin)
     savollar = [
         s.strip('- ').strip()
         for s in response.choices[0].message.content.strip().split('\n')
         if s.strip()
     ]
-    # Faqat 5 ta savol
     return savollar[:5]
 
-# --- Javoblar tahlili va xulosa (O‘zbekcha) ---
+# --- Javoblarni tahlil qilish ---
 def analyze_responses(position, qa_list):
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
     prompt = (
@@ -83,7 +83,7 @@ def analyze_responses(position, qa_list):
 # --- STATE-lar ---
 POSITION, INTERVIEW = range(2)
 
-# --- TELEGRAM BOT HANDLERLARI ---
+# --- Telegram bot handlerlar ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Assalomu alaykum! Qaysi lavozimga nomzodlik uchun suhbat boshlaymiz?\n"
@@ -94,13 +94,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
     position = update.message.text.strip()
     context.user_data['position'] = position
-    # AI orqali savollar generatsiyasi
     savollar = generate_questions(position)
     context.user_data['savollar'] = savollar
     context.user_data['javoblar'] = []
     context.user_data['soralgan'] = 0
-
-    # 1-savolni yuborish
     await update.message.reply_text(f"1-savol:\n{savollar[0]}")
     return INTERVIEW
 
@@ -110,24 +107,19 @@ async def interview(update: Update, context: ContextTypes.DEFAULT_TYPE):
     savollar = context.user_data['savollar']
     soralgan = context.user_data.get('soralgan', 0)
 
-    # Javobni saqlash
     javoblar.append(javob)
     context.user_data['javoblar'] = javoblar
     context.user_data['soralgan'] = soralgan + 1
 
-    # Navbatdagi savol bormi?
     if context.user_data['soralgan'] < len(savollar):
         idx = context.user_data['soralgan']
         await update.message.reply_text(f"{idx+1}-savol:\n{savollar[idx]}")
         return INTERVIEW
     else:
-        # 5 ta javob to‘plandi, natija chiqaramiz
         qa_list = list(zip(savollar, javoblar))
         position = context.user_data['position']
         result = analyze_responses(position, qa_list)
         user = update.message.from_user
-
-        # Gsheetga yozish
         write_to_sheet([
             str(user.id),
             user.username or "",
@@ -136,7 +128,6 @@ async def interview(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "; ".join([f"{i+1}) {q} | {a}" for i, (q, a) in enumerate(qa_list)]),
             result
         ])
-
         await update.message.reply_text("Suhbat natijasi:\n" + result)
         return ConversationHandler.END
 
@@ -144,33 +135,31 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Suhbat bekor qilindi.")
     return ConversationHandler.END
 
+# --- MAIN ---
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # --- Conversation handler ---
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
             POSITION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_position)],
             INTERVIEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, interview)],
         },
-        fallbacks=[CommandHandler("cancel", cancel)]
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     app.add_handler(conv_handler)
-    print("✅ Bot webhook orqali ishga tushdi...")
 
-    # --- Webhook uchun sozlamalar ---
     PORT = int(os.environ.get("PORT", 8443))
     WEBHOOK_PATH = "/webhook"
     WEBHOOK_URL = f"https://eloquent-warmth.up.railway.app{WEBHOOK_PATH}"
 
+    print("✅ Bot webhook orqali ishga tushdi...")
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
-        webhook_url=WEBHOOK_URL,
-        webhook_path=WEBHOOK_PATH
-)
+        webhook_url=WEBHOOK_URL
+    )
 
 if __name__ == '__main__':
     main()
