@@ -3,3 +3,4 @@ python-dotenv
 openai
 gspread
 oauth2client
+python-telegram-bot[webhooks]==20.8
